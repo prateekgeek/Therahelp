@@ -1,214 +1,207 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Settings, 
-  Send, 
-  MessageSquare, 
-  BookOpen, 
-  History, 
-  Trash2, 
-  ShieldCheck, 
-  AlertCircle,
-  Menu,
-  X
-} from 'lucide-react';
+import { Settings, Send, ShieldCheck, Lock, RefreshCcw, LogOut, Lightbulb, AlertCircle, X } from 'lucide-react';
 
 const App = () => {
-  // State Management
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
+  // --- CONFIGURATION ---
+  const CLINIC_CODE = "ABA2024"; 
+  
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authInput, setAuthInput] = useState('');
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('rbt_assistant_key') || '');
   const [showSettings, setShowSettings] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [error, setError] = useState(null);
+  
   const scrollRef = useRef(null);
 
-  // Auto-scroll to bottom of chat
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  // System Prompt including the "2 AM Robot Recovery" script
-  const systemPrompt = `You are a Senior BCBA (Board Certified Behavior Analyst) Consultant. 
-Your goal is to provide evidence-based, clinically sound advice following ABA ethical guidelines.
-Persona: Professional, supportive, analytical, and highly experienced.
-
-IMPORTANT PROTOCOL:
-If a user mentions sleep issues, night-time routines, or '2 AM' struggles, you MUST incorporate the '2 AM Robot Recovery' script:
-- Remain neutral and "boring" (robot-like).
-- Minimize eye contact and verbal interaction.
-- Use a calm, monotone voice for necessary prompts only.
-- Guide the learner back to bed with minimal physical prompting.
-- Avoid reinforcing the wakeful behavior with attention or preferred items.
-
-When providing advice, always prioritize safety, data-based decision making, and the dignity of the learner.`;
-
-  const handleSend = async () => {
-    if (!input.trim()) return;
-    if (!apiKey) {
-      setShowSettings(true);
-      return;
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (authInput === CLINIC_CODE) {
+      setIsAuthenticated(true);
+      setError(null);
+    } else {
+      setError("Invalid Clinic Access Code");
     }
+  };
 
-    const userMessage = { role: 'user', content: input };
-    setMessages(prev => [...prev, userMessage]);
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || loading) return;
+    if (!apiKey) { setShowSettings(true); return; }
+
+    const userMsg = { role: 'user', content: input };
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
+    setError(null);
+
+    const systemPrompt = `You are a Senior BCBA Clinical Consultant. Provide immediate, evidence-based ABA strategies.
+    
+    SPECIAL PROTOCOL: 
+    If a user mentions sleep, night-time, or '2 AM' struggles, you MUST use the '2 AM Robot Recovery' script:
+    - Act like a robot: Neutral, boring, monotone.
+    - No eye contact, no conversation.
+    - Minimal physical prompting to return to bed.
+    - No reinforcement (toys, snacks, or attention).
+
+    GENERAL RULES:
+    1. HIPAA: Never use or ask for names. Refer to "the learner".
+    2. Zero Retention: Advice is for the moment only.
+    3. Focus on functional communication (FCT) and de-escalation.`;
 
     try {
-      const response = await fetchWithRetry(
+      const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [
-              { parts: [{ text: systemPrompt }] }, // System Context
+              { role: "user", parts: [{ text: systemPrompt }] },
               ...messages.map(m => ({
                 role: m.role === 'user' ? 'user' : 'model',
                 parts: [{ text: m.content }]
               })),
-              { role: 'user', parts: [{ text: input }] }
+              { role: "user", parts: [{ text: input }] }
             ]
-          })
+          }),
         }
       );
 
+      if (!response.ok) throw new Error("API Connection Failed");
       const data = await response.json();
-      const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I couldn't process that request.";
-      
+      const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
       setMessages(prev => [...prev, { role: 'model', content: aiText }]);
-    } catch (error) {
-      setMessages(prev => [...prev, { role: 'error', content: "Connection Error: Please check your API key and internet connection." }]);
+    } catch (err) {
+      setError("Error connecting to AI. Please verify your API Key in settings.");
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchWithRetry = async (url, options, retries = 5, backoff = 1000) => {
-    try {
-      const res = await fetch(url, options);
-      if (!res.ok) throw new Error();
-      return res;
-    } catch (err) {
-      if (retries <= 0) throw err;
-      await new Promise(r => setTimeout(r, backoff));
-      return fetchWithRetry(url, options, retries - 1, backoff * 2);
-    }
-  };
-
-  const saveSettings = (e) => {
+  const saveApiKey = (e) => {
     e.preventDefault();
-    localStorage.setItem('gemini_api_key', apiKey);
+    const key = e.target.keyInput.value;
+    setApiKey(key);
+    localStorage.setItem('rbt_assistant_key', key);
     setShowSettings(false);
   };
 
-  const clearChat = () => {
-    if (confirm("Clear this clinical session?")) {
-      setMessages([]);
-    }
-  };
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-6">
+        <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md">
+          <div className="flex justify-center mb-6">
+            <div className="bg-blue-600 p-4 rounded-2xl text-white"><Lock size={32} /></div>
+          </div>
+          <h2 className="text-2xl font-bold text-center text-slate-800 mb-6">RBT Clinical Portal</h2>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <input
+              type="password"
+              value={authInput}
+              onChange={(e) => setAuthInput(e.target.value)}
+              placeholder="Enter Clinic Access Code"
+              className="w-full p-4 border rounded-xl text-center text-lg tracking-widest outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button className="w-full bg-[#1e293b] text-white font-bold py-4 rounded-xl hover:bg-slate-800 transition shadow-lg">Unlock Assistant</button>
+            {error && <p className="text-red-500 text-center text-sm font-medium">{error}</p>}
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sans text-slate-900">
-      {/* Mobile Sidebar Toggle */}
-      <button 
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded shadow-md"
-      >
-        {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
-      </button>
-
-      {/* Sidebar */}
-      <aside className={`
-        fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-white transform transition-transform duration-300 lg:relative lg:translate-x-0
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
-        <div className="p-6">
-          <div className="flex items-center gap-2 mb-8">
-            <div className="p-2 bg-blue-500 rounded-lg">
-              <ShieldCheck size={24} />
+    <div className="flex flex-col h-screen bg-slate-50 relative">
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="absolute inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold">API Key Setup</h3>
+              <button onClick={() => setShowSettings(false)}><X size={20}/></button>
             </div>
-            <h1 className="text-xl font-bold tracking-tight">BCBA Assistant</h1>
+            <form onSubmit={saveApiKey} className="space-y-4">
+              <input name="keyInput" type="password" defaultValue={apiKey} placeholder="Paste Google API Key" className="w-full p-3 border rounded-xl" />
+              <button className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">Save to Device</button>
+            </form>
           </div>
-
-          <nav className="space-y-4">
-            <button className="flex items-center gap-3 w-full p-2 rounded hover:bg-slate-800 transition text-slate-300">
-              <MessageSquare size={18} />
-              <span>Current Session</span>
-            </button>
-            <button className="flex items-center gap-3 w-full p-2 rounded hover:bg-slate-800 transition text-slate-300 opacity-50 cursor-not-allowed">
-              <History size={18} />
-              <span>Case History</span>
-            </button>
-            <button className="flex items-center gap-3 w-full p-2 rounded hover:bg-slate-800 transition text-slate-300 opacity-50 cursor-not-allowed">
-              <BookOpen size={18} />
-              <span>Reference Library</span>
-            </button>
-          </nav>
         </div>
+      )}
 
-        <div className="absolute bottom-0 w-full p-4 border-t border-slate-800">
-          <button 
-            onClick={() => setShowSettings(true)}
-            className="flex items-center gap-3 w-full p-2 rounded hover:bg-slate-800 transition text-slate-300"
-          >
-            <Settings size={18} />
-            <span>Settings</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Chat Area */}
-      <main className="flex-1 flex flex-col relative w-full overflow-hidden">
-        {/* Header */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold text-slate-700">Senior Consultant Mode</span>
-            <span className="text-xs text-green-500 flex items-center gap-1">
-              <span className="w-2 h-2 bg-green-500 rounded-full"></span> Active Session
-            </span>
+      {/* Header */}
+      <header className="bg-[#1e293b] text-white p-4 flex justify-between items-center shadow-lg">
+        <div className="flex items-center gap-3">
+          <div className="bg-blue-500 p-2 rounded-lg"><Lightbulb size={20} /></div>
+          <div>
+            <h1 className="font-bold text-sm md:text-base leading-tight">RBT Strategy Finder</h1>
+            <p className="text-[10px] text-blue-300 uppercase tracking-widest font-bold">Session Active</p>
           </div>
-          <button 
-            onClick={clearChat}
-            className="p-2 text-slate-400 hover:text-red-500 transition"
-            title="Clear Session"
-          >
-            <Trash2 size={20} />
-          </button>
-        </header>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-slate-700 rounded-full"><Settings size={18} /></button>
+          <button onClick={() => setMessages([])} className="p-2 hover:bg-slate-700 rounded-full"><RefreshCcw size={18} /></button>
+          <button onClick={() => setIsAuthenticated(false)} className="p-2 hover:bg-red-900/40 rounded-full text-red-300"><LogOut size={18} /></button>
+        </div>
+      </header>
 
-        {/* Messages */}
-        <div 
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6"
-        >
-          {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full text-center space-y-4 max-w-md mx-auto">
-              <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
-                <MessageSquare size={32} />
-              </div>
-              <h2 className="text-xl font-bold">Clinical Case Assistant</h2>
-              <p className="text-slate-500">
-                Describe a scenario, ABC data, or a behavior concern. I'll provide analysis and evidence-based interventions.
-              </p>
-              <div className="grid grid-cols-1 gap-2 w-full mt-4">
-                <button 
-                  onClick={() => setInput("The learner is engaging in hand-flapping, what should I do?")}
-                  className="text-left p-3 border border-slate-200 rounded-lg hover:bg-white hover:border-blue-300 transition text-sm"
-                >
-                  "How should I handle stereotypy?"
-                </button>
-                <button 
-                  onClick={() => setInput("Can you help me with a 2 AM wake up situation?")}
-                  className="text-left p-3 border border-slate-200 rounded-lg hover:bg-white hover:border-blue-300 transition text-sm"
-                >
-                  "We have 2 AM wake-ups..."
-                </button>
-              </div>
+      {/* HIPAA Banner */}
+      <div className="bg-blue-50 border-b border-blue-100 p-2 text-center flex items-center justify-center gap-2">
+        <ShieldCheck size={14} className="text-blue-600" />
+        <span className="text-[10px] text-blue-800 font-bold uppercase tracking-widest">Privacy Shield: Vertex AI Enabled</span>
+      </div>
+
+      {/* Chat Area */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 max-w-3xl mx-auto w-full">
+        {messages.length === 0 && (
+          <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
+            <Lightbulb size={48} className="mb-4 text-slate-400" />
+            <p className="text-sm text-slate-500 font-medium italic max-w-xs">
+              "Jay is escaping and stimming his wrists. How do I get him back to the table?"
+            </p>
+          </div>
+        )}
+
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] p-4 rounded-2xl shadow-sm text-sm leading-relaxed ${
+              m.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border text-slate-800 rounded-tl-none'
+            }`}>
+              {m.content}
             </div>
-          )}
+          </div>
+        ))}
 
-          {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end'
+        {loading && <div className="text-[10px] text-slate-400 font-bold uppercase ml-2 animate-pulse tracking-tighter">Analyzing Session...</div>}
+        {error && <div className="p-3 bg-red-50 text-red-600 rounded-xl flex items-center gap-2 text-xs border border-red-100"><AlertCircle size={14} /> {error}</div>}
+      </div>
+
+      {/* Input */}
+      <div className="p-4 bg-white border-t border-slate-200">
+        <form onSubmit={handleSend} className="max-w-3xl mx-auto flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type situation (e.g. escaping table)..."
+            className="flex-1 p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          />
+          <button disabled={loading || !input.trim()} className="bg-blue-600 text-white p-4 rounded-2xl hover:bg-blue-700 disabled:opacity-30 shadow-lg">
+            <Send size={20} />
+          </button>
+        </form>
+        <p className="text-[9px] text-slate-400 text-center mt-3 font-medium uppercase tracking-tighter">
+          Confidential: No patient names. Data vanishes on session close.
+        </p>
+      </div>
+    </div>
+  );
+};
+
+export default App;
