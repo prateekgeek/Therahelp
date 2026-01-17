@@ -1,300 +1,215 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Settings, Send, ShieldCheck, Lock, 
-  RefreshCcw, LogOut, Lightbulb, 
-  AlertCircle, X, Terminal 
-} from 'lucide-react';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RBT Clinical Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=JetBrains+Mono&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .font-mono { font-family: 'JetBrains+Mono', monospace; }
+        .chat-container::-webkit-scrollbar { width: 5px; }
+        .chat-container::-webkit-scrollbar-track { background: transparent; }
+        .chat-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body class="bg-slate-100 h-screen flex flex-col overflow-hidden">
 
-const App = () => {
-  // --- CLINICAL CONFIG ---
-  const CLINIC_CODE = "ABA2024"; 
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authInput, setAuthInput] = useState('');
-  const [apiKey, setApiKey] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('rbt_assistant_key') || '';
-    }
-    return '';
-  });
-  
-  const [showSettings, setShowSettings] = useState(false);
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  
-  const scrollRef = useRef(null);
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
-
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (authInput.toUpperCase() === CLINIC_CODE) {
-      setIsAuthenticated(true);
-      setError(null);
-    } else {
-      setError("Invalid Clinic Access Code");
-    }
-  };
-
-  const handleSend = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
-    if (!apiKey) {
-      setShowSettings(true);
-      return;
-    }
-
-    const userMsg = { role: 'user', content: input };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    setLoading(true);
-    setError(null);
-
-    const systemPrompt = `You are a Senior BCBA Clinical Consultant. Provide immediate, evidence-based ABA strategies.
-    
-    CRITICAL PROTOCOL: 
-    If the user mentions sleep, night-time, or '2 AM' struggles, you MUST activate the '2 AM Robot Recovery' script:
-    - Instruct the RBT to act like a 'Robot': Neutral, boring, monotone.
-    - Zero eye contact, zero conversation, no verbal reprimands.
-    - Minimal physical prompting (guiding) to return to bed.
-    - Absolutely no reinforcement (no toys, snacks, or extra attention).
-    - Goal: Make the interaction as unrewarding as possible.
-
-    GENERAL CLINICAL RULES:
-    1. HIPAA Compliance: Never use patient names. Refer to "the learner" or "the individual".
-    2. Focus on FCT (Functional Communication Training) and Antecedent Strategies.
-    3. Keep responses concise and actionable for high-stress situations.`;
-
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              { role: "user", parts: [{ text: systemPrompt }] },
-              ...messages.map(m => ({
-                role: m.role === 'user' ? 'user' : 'model',
-                parts: [{ text: m.content }]
-              })),
-              { role: "user", parts: [{ text: input }] }
-            ]
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error?.message || "API Connection Failed");
-      }
-
-      const data = await response.json();
-      const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      setMessages(prev => [...prev, { role: 'model', content: aiText }]);
-    } catch (err) {
-      setError(err.message || "Error connecting to AI. Please verify your API Key.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const saveApiKey = (e) => {
-    e.preventDefault();
-    const key = e.target.keyInput.value.trim();
-    if (key) {
-      setApiKey(key);
-      localStorage.setItem('rbt_assistant_key', key);
-      setShowSettings(false);
-      setError(null);
-    }
-  };
-
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
-        <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border-t-8 border-blue-600">
-          <div className="flex justify-center mb-6">
-            <div className="bg-slate-100 p-4 rounded-2xl text-blue-600 border border-blue-100 shadow-inner">
-              <Terminal size={32} />
+    <!-- Auth Overlay -->
+    <div id="auth-screen" class="fixed inset-0 z-[100] bg-slate-900 flex items-center justify-center p-6">
+        <div class="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border-t-8 border-blue-600">
+            <div class="flex justify-center mb-6">
+                <div class="bg-slate-100 p-4 rounded-2xl text-blue-600 border border-blue-100">
+                    <i class="fas fa-terminal text-3xl"></i>
+                </div>
             </div>
-          </div>
-          <h2 className="text-2xl font-bold text-center text-slate-800 mb-2">Clinical Portal</h2>
-          <p className="text-slate-400 text-xs text-center mb-6 uppercase tracking-widest font-bold">RBT / BCBA Authorized Access</p>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="relative">
-              <input
-                type="password"
-                value={authInput}
-                onChange={(e) => setAuthInput(e.target.value)}
-                placeholder="Clinic Access Code"
-                className="w-full p-4 border bg-slate-50 rounded-xl text-center text-lg tracking-widest outline-none focus:ring-2 focus:ring-blue-500 font-mono transition-all"
-              />
-              <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
+            <h2 class="text-2xl font-bold text-center text-slate-800 mb-2">Clinical Portal</h2>
+            <p class="text-slate-400 text-[10px] text-center mb-6 uppercase tracking-[0.2em] font-black">Authorized Personnel Only</p>
+            <div class="space-y-4">
+                <div class="relative">
+                    <input type="password" id="auth-input" placeholder="Clinic Access Code" 
+                        class="w-full p-4 border bg-slate-50 rounded-xl text-center text-lg tracking-widest outline-none focus:ring-2 focus:ring-blue-500 font-mono transition-all">
+                    <i class="fas fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                </div>
+                <button onclick="checkAuth()" class="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-slate-800 active:scale-95 transition shadow-lg">
+                    Unlock Terminal
+                </button>
+                <p id="auth-error" class="hidden text-red-500 text-center text-xs font-bold uppercase tracking-tighter pt-2">Invalid Access Code</p>
             </div>
-            <button className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-slate-800 active:scale-95 transition shadow-lg">
-              Unlock Terminal
-            </button>
-            {error && <p className="text-red-500 text-center text-xs font-bold animate-pulse uppercase tracking-tighter">{error}</p>}
-          </form>
-          <div className="mt-8 text-[10px] text-slate-400 text-center leading-relaxed">
-            SYSTEM PROTECTED BY AES-256 <br/> 
-            NO PATIENT DATA STORED LOCALLY
-          </div>
+            <div class="mt-8 text-[9px] text-slate-400 text-center leading-relaxed">
+                256-BIT ENCRYPTION ACTIVE <br> NO HIPAA DATA STORED ON SERVER
+            </div>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col h-screen bg-slate-50 relative font-sans text-slate-900">
-      {/* Settings Modal */}
-      {showSettings && (
-        <div className="absolute inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl border border-slate-200">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold flex items-center gap-2 text-slate-700">
-                <Settings size={18} className="text-blue-500" /> API Configuration
-              </h3>
-              <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600 transition">
-                <X size={20}/>
-              </button>
-            </div>
-            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-              Your API Key is stored only in this browser's local storage. We never see it.
-            </p>
-            <form onSubmit={saveApiKey} className="space-y-4">
-              <input 
-                name="keyInput" 
-                type="password" 
-                defaultValue={apiKey} 
-                placeholder="Google Gemini API Key" 
-                className="w-full p-3 border rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono text-sm" 
-              />
-              <button className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 active:scale-95 transition shadow-md">
-                Save & Initialize
-              </button>
-              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="block text-center text-[10px] text-blue-500 hover:underline">
-                Don't have a key? Get one for free here.
-              </a>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Header */}
-      <header className="bg-slate-900 text-white px-4 py-3 flex justify-between items-center shadow-xl z-10 border-b border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="bg-blue-600 p-2 rounded-lg shadow-lg">
-            <Lightbulb size={18} className="text-white" />
-          </div>
-          <div>
-            <h1 className="font-extrabold text-sm md:text-base leading-none tracking-tight">RBT FIELD TOOL</h1>
-            <p className="text-[9px] text-blue-400 uppercase tracking-widest font-black mt-1">Live Clinical Analysis</p>
-          </div>
-        </div>
-        <div className="flex gap-1">
-          <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-slate-800 rounded-full transition-colors" title="Settings">
-            <Settings size={18} />
-          </button>
-          <button onClick={() => setMessages([])} className="p-2 hover:bg-slate-800 rounded-full transition-colors" title="Clear Chat">
-            <RefreshCcw size={18} />
-          </button>
-          <button onClick={() => setIsAuthenticated(false)} className="p-2 hover:bg-red-500/20 rounded-full text-red-400 transition-colors" title="Logout">
-            <LogOut size={18} />
-          </button>
-        </div>
-      </header>
-
-      {/* HIPAA Compliance Bar */}
-      <div className="bg-blue-600 text-white px-2 py-1.5 flex items-center justify-center gap-2 overflow-hidden shadow-inner">
-        <ShieldCheck size={12} className="animate-pulse" />
-        <span className="text-[9px] font-bold uppercase tracking-[0.2em] whitespace-nowrap">
-          Encrypted Session: Do not enter PHI / Patient Names
-        </span>
-      </div>
-
-      {/* Main Chat Display */}
-      <main ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6 max-w-4xl mx-auto w-full scroll-smooth">
-        {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center py-20 animate-fade-in">
-            <div className="bg-white p-6 rounded-full shadow-sm border border-slate-100 mb-6">
-              <Lightbulb size={40} className="text-blue-200" />
-            </div>
-            <h3 className="text-slate-800 font-bold mb-2">Consultation Terminal Ready</h3>
-            <p className="text-xs text-slate-400 font-medium max-w-[200px] leading-relaxed">
-              Example: "Learner is engaging in SIB at the 2 AM transition. What is the protocol?"
-            </p>
-          </div>
-        )}
-
-        {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[90%] p-4 rounded-2xl shadow-sm text-sm leading-relaxed transition-all ${
-              m.role === 'user' 
-                ? 'bg-blue-600 text-white rounded-br-none font-medium' 
-                : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-md'
-            }`}>
-              {m.content.split('\n').map((line, idx) => (
-                <p key={idx} className={line.trim() === "" ? "h-2" : "mb-1"}>{line}</p>
-              ))}
-            </div>
-          </div>
-        ))}
-
-        {loading && (
-          <div className="flex items-center gap-2 ml-2">
-            <div className="flex gap-1">
-              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-            </div>
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Clinical Processing...</span>
-          </div>
-        )}
-        
-        {error && (
-          <div className="p-4 bg-red-50 text-red-600 rounded-xl flex items-start gap-3 text-xs border border-red-100 shadow-sm animate-shake">
-            <AlertCircle size={16} className="shrink-0 mt-0.5" />
-            <div>
-              <p className="font-bold uppercase tracking-tight mb-1">System Error</p>
-              <p className="opacity-80">{error}</p>
-            </div>
-          </div>
-        )}
-      </main>
-
-      {/* Input Module */}
-      <footer className="p-4 bg-white border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] z-10">
-        <form onSubmit={handleSend} className="max-w-4xl mx-auto flex gap-2">
-          <div className="flex-1 relative group">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Briefly describe situation..."
-              className="w-full p-4 pr-12 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white text-sm transition-all"
-            />
-          </div>
-          <button 
-            disabled={loading || !input.trim()} 
-            className="bg-blue-600 text-white p-4 rounded-2xl hover:bg-blue-700 disabled:opacity-20 active:scale-95 transition-all shadow-lg flex items-center justify-center shrink-0"
-          >
-            <Send size={20} />
-          </button>
-        </form>
-        <div className="max-w-4xl mx-auto mt-3 flex justify-between items-center px-1">
-          <span className="text-[8px] text-slate-400 font-bold uppercase tracking-[0.1em]">AI Assisted Clinical Guidance</span>
-          <span className="text-[8px] text-slate-300 font-medium">Session ID: {Math.random().toString(36).substring(7).toUpperCase()}</span>
-        </div>
-      </footer>
     </div>
-  );
-};
 
-export default App;
+    <!-- API Key Modal -->
+    <div id="api-modal" class="hidden fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl border border-slate-200">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold flex items-center gap-2 text-slate-700">
+                    <i class="fas fa-key text-blue-500"></i> API Setup
+                </h3>
+            </div>
+            <p class="text-xs text-slate-500 mb-4 leading-relaxed">Enter your Gemini API Key to enable clinical analysis.</p>
+            <input type="password" id="api-key-input" placeholder="Paste API Key Here" 
+                class="w-full p-3 border rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500 mb-4 font-mono text-sm">
+            <button onclick="saveApiKey()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition">Save & Continue</button>
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" class="block text-center text-[10px] text-blue-500 mt-4 hover:underline">Get a free API key here</a>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white px-4 py-4 flex justify-between items-center shadow-xl shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 p-2.5 rounded-xl shadow-lg">
+                <i class="fas fa-robot text-white text-lg"></i>
+            </div>
+            <div>
+                <h1 class="font-black text-sm leading-none tracking-tight">RBT FIELD ASSISTANT</h1>
+                <p class="text-[9px] text-blue-400 uppercase tracking-widest font-black mt-1">2 AM Recovery Protocol Enabled</p>
+            </div>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="document.getElementById('api-modal').classList.remove('hidden')" class="w-9 h-9 flex items-center justify-center hover:bg-slate-800 rounded-full transition"><i class="fas fa-cog text-sm"></i></button>
+            <button onclick="location.reload()" class="w-9 h-9 flex items-center justify-center hover:bg-red-500/20 text-red-400 rounded-full transition"><i class="fas fa-power-off text-sm"></i></button>
+        </div>
+    </header>
+
+    <!-- HIPAA Warning -->
+    <div class="bg-amber-500 text-white px-2 py-1 flex items-center justify-center gap-2 shrink-0">
+        <i class="fas fa-shield-halved text-[10px] animate-pulse"></i>
+        <span class="text-[9px] font-black uppercase tracking-[0.2em]">Mandatory: Do Not Use Real Names or PHI</span>
+    </div>
+
+    <!-- Chat Area -->
+    <main id="chat-window" class="flex-1 overflow-y-auto p-4 space-y-4 chat-container">
+        <div class="flex justify-start">
+            <div class="max-w-[85%] p-4 bg-white border border-slate-200 rounded-2xl rounded-tl-none shadow-sm text-sm text-slate-700">
+                <p class="font-bold text-blue-600 mb-1">System Ready.</p>
+                How can I assist you with clinical implementation today? 
+                <br><br>
+                <em class="text-xs opacity-60">Tip: If you're dealing with a night-time escape, mention "2 AM" to trigger the Recovery Protocol.</em>
+            </div>
+        </div>
+    </main>
+
+    <!-- Loading Indicator -->
+    <div id="loader" class="hidden px-6 py-2">
+        <div class="flex items-center gap-2">
+            <div class="flex gap-1">
+                <div class="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce"></div>
+                <div class="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                <div class="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+            </div>
+            <span class="text-[10px] font-black text-slate-400 uppercase">Consulting BCBA Brain...</span>
+        </div>
+    </div>
+
+    <!-- Input -->
+    <footer class="p-4 bg-white border-t border-slate-200 glass shrink-0">
+        <div class="max-w-4xl mx-auto flex gap-2">
+            <input type="text" id="user-input" placeholder="Type clinical scenario..." 
+                class="flex-1 p-4 bg-slate-100 border-none rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/30 text-sm transition-all"
+                onkeypress="if(event.key === 'Enter') sendMessage()">
+            <button onclick="sendMessage()" class="bg-blue-600 text-white px-6 rounded-2xl hover:bg-blue-700 active:scale-95 transition shadow-lg shadow-blue-200">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </footer>
+
+    <script>
+        const CLINIC_CODE = "ABA2024";
+        let apiKey = localStorage.getItem('rbt_api_key') || "";
+        let messages = [];
+
+        function checkAuth() {
+            const input = document.getElementById('auth-input').value;
+            if (input.toUpperCase() === CLINIC_CODE) {
+                document.getElementById('auth-screen').style.display = 'none';
+                if (!apiKey) document.getElementById('api-modal').classList.remove('hidden');
+            } else {
+                const err = document.getElementById('auth-error');
+                err.classList.remove('hidden');
+                setTimeout(() => err.classList.add('hidden'), 2000);
+            }
+        }
+
+        function saveApiKey() {
+            const val = document.getElementById('api-key-input').value.trim();
+            if (val) {
+                apiKey = val;
+                localStorage.setItem('rbt_api_key', val);
+                document.getElementById('api-modal').classList.add('hidden');
+            }
+        }
+
+        function appendMessage(role, text) {
+            const win = document.getElementById('chat-window');
+            const div = document.createElement('div');
+            div.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+            
+            const inner = document.createElement('div');
+            inner.className = `max-w-[85%] p-4 rounded-2xl shadow-sm text-sm leading-relaxed ${
+                role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none'
+            }`;
+            inner.innerText = text;
+            
+            div.appendChild(inner);
+            win.appendChild(div);
+            win.scrollTop = win.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('user-input');
+            const text = input.value.trim();
+            if (!text || !apiKey) return;
+
+            input.value = "";
+            appendMessage('user', text);
+            messages.push({ role: "user", parts: [{ text }] });
+
+            const loader = document.getElementById('loader');
+            loader.classList.remove('hidden');
+
+            const systemPrompt = `You are a Senior BCBA Clinical Consultant.
+            
+            SCENARIO PROTOCOL: 
+            If the user mentions '2 AM', 'night-time', or 'refusing bed', activate the '2 AM Robot Recovery' script immediately:
+            - Tell the RBT: BE A ROBOT.
+            - Neutral affect, no eye contact, zero verbal interaction except "Back to bed".
+            - Make the environment as boring and unrewarding as possible.
+            - Minimal physical guidance.
+            - Do not explain, do not negotiate, do not get angry.
+            
+            HIPAA RULE: Never use names.
+            STYLE: Short, bulleted, actionable steps for a tired RBT.`;
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [
+                            { role: "user", parts: [{ text: systemPrompt }] },
+                            ...messages
+                        ]
+                    })
+                });
+
+                const data = await response.json();
+                const aiText = data.candidates[0].content.parts[0].text;
+                
+                loader.classList.add('hidden');
+                appendMessage('model', aiText);
+                messages.push({ role: "model", parts: [{ text: aiText }] });
+            } catch (err) {
+                loader.classList.add('hidden');
+                appendMessage('model', "Error: API connection failed. Check your API key in settings.");
+            }
+        }
+    </script>
+</body>
+</html>
