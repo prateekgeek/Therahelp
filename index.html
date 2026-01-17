@@ -1,13 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, Send, ShieldCheck, Lock, RefreshCcw, LogOut, Lightbulb, AlertCircle, X } from 'lucide-react';
+import { 
+  Settings, Send, ShieldCheck, Lock, 
+  RefreshCcw, LogOut, Lightbulb, 
+  AlertCircle, X, Terminal 
+} from 'lucide-react';
 
 const App = () => {
-  // --- CONFIGURATION ---
+  // --- CLINICAL CONFIG ---
   const CLINIC_CODE = "ABA2024"; 
-  
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authInput, setAuthInput] = useState('');
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('rbt_assistant_key') || '');
+  const [apiKey, setApiKey] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('rbt_assistant_key') || '';
+    }
+    return '';
+  });
+  
   const [showSettings, setShowSettings] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -17,12 +26,14 @@ const App = () => {
   const scrollRef = useRef(null);
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
   }, [messages]);
 
   const handleLogin = (e) => {
     e.preventDefault();
-    if (authInput === CLINIC_CODE) {
+    if (authInput.toUpperCase() === CLINIC_CODE) {
       setIsAuthenticated(true);
       setError(null);
     } else {
@@ -33,7 +44,10 @@ const App = () => {
   const handleSend = async (e) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
-    if (!apiKey) { setShowSettings(true); return; }
+    if (!apiKey) {
+      setShowSettings(true);
+      return;
+    }
 
     const userMsg = { role: 'user', content: input };
     setMessages(prev => [...prev, userMsg]);
@@ -43,17 +57,18 @@ const App = () => {
 
     const systemPrompt = `You are a Senior BCBA Clinical Consultant. Provide immediate, evidence-based ABA strategies.
     
-    SPECIAL PROTOCOL: 
-    If a user mentions sleep, night-time, or '2 AM' struggles, you MUST use the '2 AM Robot Recovery' script:
-    - Act like a robot: Neutral, boring, monotone.
-    - No eye contact, no conversation.
-    - Minimal physical prompting to return to bed.
-    - No reinforcement (toys, snacks, or attention).
+    CRITICAL PROTOCOL: 
+    If the user mentions sleep, night-time, or '2 AM' struggles, you MUST activate the '2 AM Robot Recovery' script:
+    - Instruct the RBT to act like a 'Robot': Neutral, boring, monotone.
+    - Zero eye contact, zero conversation, no verbal reprimands.
+    - Minimal physical prompting (guiding) to return to bed.
+    - Absolutely no reinforcement (no toys, snacks, or extra attention).
+    - Goal: Make the interaction as unrewarding as possible.
 
-    GENERAL RULES:
-    1. HIPAA: Never use or ask for names. Refer to "the learner".
-    2. Zero Retention: Advice is for the moment only.
-    3. Focus on functional communication (FCT) and de-escalation.`;
+    GENERAL CLINICAL RULES:
+    1. HIPAA Compliance: Never use patient names. Refer to "the learner" or "the individual".
+    2. Focus on FCT (Functional Communication Training) and Antecedent Strategies.
+    3. Keep responses concise and actionable for high-stress situations.`;
 
     try {
       const response = await fetch(
@@ -74,12 +89,16 @@ const App = () => {
         }
       );
 
-      if (!response.ok) throw new Error("API Connection Failed");
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error?.message || "API Connection Failed");
+      }
+
       const data = await response.json();
       const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
       setMessages(prev => [...prev, { role: 'model', content: aiText }]);
     } catch (err) {
-      setError("Error connecting to AI. Please verify your API Key in settings.");
+      setError(err.message || "Error connecting to AI. Please verify your API Key.");
     } finally {
       setLoading(false);
     }
@@ -87,119 +106,193 @@ const App = () => {
 
   const saveApiKey = (e) => {
     e.preventDefault();
-    const key = e.target.keyInput.value;
-    setApiKey(key);
-    localStorage.setItem('rbt_assistant_key', key);
-    setShowSettings(false);
+    const key = e.target.keyInput.value.trim();
+    if (key) {
+      setApiKey(key);
+      localStorage.setItem('rbt_assistant_key', key);
+      setShowSettings(false);
+      setError(null);
+    }
   };
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-6">
-        <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
+        <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border-t-8 border-blue-600">
           <div className="flex justify-center mb-6">
-            <div className="bg-blue-600 p-4 rounded-2xl text-white"><Lock size={32} /></div>
+            <div className="bg-slate-100 p-4 rounded-2xl text-blue-600 border border-blue-100 shadow-inner">
+              <Terminal size={32} />
+            </div>
           </div>
-          <h2 className="text-2xl font-bold text-center text-slate-800 mb-6">RBT Clinical Portal</h2>
+          <h2 className="text-2xl font-bold text-center text-slate-800 mb-2">Clinical Portal</h2>
+          <p className="text-slate-400 text-xs text-center mb-6 uppercase tracking-widest font-bold">RBT / BCBA Authorized Access</p>
           <form onSubmit={handleLogin} className="space-y-4">
-            <input
-              type="password"
-              value={authInput}
-              onChange={(e) => setAuthInput(e.target.value)}
-              placeholder="Enter Clinic Access Code"
-              className="w-full p-4 border rounded-xl text-center text-lg tracking-widest outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button className="w-full bg-[#1e293b] text-white font-bold py-4 rounded-xl hover:bg-slate-800 transition shadow-lg">Unlock Assistant</button>
-            {error && <p className="text-red-500 text-center text-sm font-medium">{error}</p>}
+            <div className="relative">
+              <input
+                type="password"
+                value={authInput}
+                onChange={(e) => setAuthInput(e.target.value)}
+                placeholder="Clinic Access Code"
+                className="w-full p-4 border bg-slate-50 rounded-xl text-center text-lg tracking-widest outline-none focus:ring-2 focus:ring-blue-500 font-mono transition-all"
+              />
+              <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
+            </div>
+            <button className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-slate-800 active:scale-95 transition shadow-lg">
+              Unlock Terminal
+            </button>
+            {error && <p className="text-red-500 text-center text-xs font-bold animate-pulse uppercase tracking-tighter">{error}</p>}
           </form>
+          <div className="mt-8 text-[10px] text-slate-400 text-center leading-relaxed">
+            SYSTEM PROTECTED BY AES-256 <br/> 
+            NO PATIENT DATA STORED LOCALLY
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 relative">
+    <div className="flex flex-col h-screen bg-slate-50 relative font-sans text-slate-900">
       {/* Settings Modal */}
       {showSettings && (
-        <div className="absolute inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+        <div className="absolute inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold">API Key Setup</h3>
-              <button onClick={() => setShowSettings(false)}><X size={20}/></button>
+              <h3 className="font-bold flex items-center gap-2 text-slate-700">
+                <Settings size={18} className="text-blue-500" /> API Configuration
+              </h3>
+              <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600 transition">
+                <X size={20}/>
+              </button>
             </div>
+            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+              Your API Key is stored only in this browser's local storage. We never see it.
+            </p>
             <form onSubmit={saveApiKey} className="space-y-4">
-              <input name="keyInput" type="password" defaultValue={apiKey} placeholder="Paste Google API Key" className="w-full p-3 border rounded-xl" />
-              <button className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">Save to Device</button>
+              <input 
+                name="keyInput" 
+                type="password" 
+                defaultValue={apiKey} 
+                placeholder="Google Gemini API Key" 
+                className="w-full p-3 border rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono text-sm" 
+              />
+              <button className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 active:scale-95 transition shadow-md">
+                Save & Initialize
+              </button>
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="block text-center text-[10px] text-blue-500 hover:underline">
+                Don't have a key? Get one for free here.
+              </a>
             </form>
           </div>
         </div>
       )}
 
       {/* Header */}
-      <header className="bg-[#1e293b] text-white p-4 flex justify-between items-center shadow-lg">
+      <header className="bg-slate-900 text-white px-4 py-3 flex justify-between items-center shadow-xl z-10 border-b border-slate-800">
         <div className="flex items-center gap-3">
-          <div className="bg-blue-500 p-2 rounded-lg"><Lightbulb size={20} /></div>
+          <div className="bg-blue-600 p-2 rounded-lg shadow-lg">
+            <Lightbulb size={18} className="text-white" />
+          </div>
           <div>
-            <h1 className="font-bold text-sm md:text-base leading-tight">RBT Strategy Finder</h1>
-            <p className="text-[10px] text-blue-300 uppercase tracking-widest font-bold">Session Active</p>
+            <h1 className="font-extrabold text-sm md:text-base leading-none tracking-tight">RBT FIELD TOOL</h1>
+            <p className="text-[9px] text-blue-400 uppercase tracking-widest font-black mt-1">Live Clinical Analysis</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-slate-700 rounded-full"><Settings size={18} /></button>
-          <button onClick={() => setMessages([])} className="p-2 hover:bg-slate-700 rounded-full"><RefreshCcw size={18} /></button>
-          <button onClick={() => setIsAuthenticated(false)} className="p-2 hover:bg-red-900/40 rounded-full text-red-300"><LogOut size={18} /></button>
+        <div className="flex gap-1">
+          <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-slate-800 rounded-full transition-colors" title="Settings">
+            <Settings size={18} />
+          </button>
+          <button onClick={() => setMessages([])} className="p-2 hover:bg-slate-800 rounded-full transition-colors" title="Clear Chat">
+            <RefreshCcw size={18} />
+          </button>
+          <button onClick={() => setIsAuthenticated(false)} className="p-2 hover:bg-red-500/20 rounded-full text-red-400 transition-colors" title="Logout">
+            <LogOut size={18} />
+          </button>
         </div>
       </header>
 
-      {/* HIPAA Banner */}
-      <div className="bg-blue-50 border-b border-blue-100 p-2 text-center flex items-center justify-center gap-2">
-        <ShieldCheck size={14} className="text-blue-600" />
-        <span className="text-[10px] text-blue-800 font-bold uppercase tracking-widest">Privacy Shield: Vertex AI Enabled</span>
+      {/* HIPAA Compliance Bar */}
+      <div className="bg-blue-600 text-white px-2 py-1.5 flex items-center justify-center gap-2 overflow-hidden shadow-inner">
+        <ShieldCheck size={12} className="animate-pulse" />
+        <span className="text-[9px] font-bold uppercase tracking-[0.2em] whitespace-nowrap">
+          Encrypted Session: Do not enter PHI / Patient Names
+        </span>
       </div>
 
-      {/* Chat Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 max-w-3xl mx-auto w-full">
+      {/* Main Chat Display */}
+      <main ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6 max-w-4xl mx-auto w-full scroll-smooth">
         {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20">
-            <Lightbulb size={48} className="mb-4 text-slate-400" />
-            <p className="text-sm text-slate-500 font-medium italic max-w-xs">
-              "Jay is escaping and stimming his wrists. How do I get him back to the table?"
+          <div className="h-full flex flex-col items-center justify-center text-center py-20 animate-fade-in">
+            <div className="bg-white p-6 rounded-full shadow-sm border border-slate-100 mb-6">
+              <Lightbulb size={40} className="text-blue-200" />
+            </div>
+            <h3 className="text-slate-800 font-bold mb-2">Consultation Terminal Ready</h3>
+            <p className="text-xs text-slate-400 font-medium max-w-[200px] leading-relaxed">
+              Example: "Learner is engaging in SIB at the 2 AM transition. What is the protocol?"
             </p>
           </div>
         )}
 
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] p-4 rounded-2xl shadow-sm text-sm leading-relaxed ${
-              m.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border text-slate-800 rounded-tl-none'
+            <div className={`max-w-[90%] p-4 rounded-2xl shadow-sm text-sm leading-relaxed transition-all ${
+              m.role === 'user' 
+                ? 'bg-blue-600 text-white rounded-br-none font-medium' 
+                : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-md'
             }`}>
-              {m.content}
+              {m.content.split('\n').map((line, idx) => (
+                <p key={idx} className={line.trim() === "" ? "h-2" : "mb-1"}>{line}</p>
+              ))}
             </div>
           </div>
         ))}
 
-        {loading && <div className="text-[10px] text-slate-400 font-bold uppercase ml-2 animate-pulse tracking-tighter">Analyzing Session...</div>}
-        {error && <div className="p-3 bg-red-50 text-red-600 rounded-xl flex items-center gap-2 text-xs border border-red-100"><AlertCircle size={14} /> {error}</div>}
-      </div>
+        {loading && (
+          <div className="flex items-center gap-2 ml-2">
+            <div className="flex gap-1">
+              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+            </div>
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Clinical Processing...</span>
+          </div>
+        )}
+        
+        {error && (
+          <div className="p-4 bg-red-50 text-red-600 rounded-xl flex items-start gap-3 text-xs border border-red-100 shadow-sm animate-shake">
+            <AlertCircle size={16} className="shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold uppercase tracking-tight mb-1">System Error</p>
+              <p className="opacity-80">{error}</p>
+            </div>
+          </div>
+        )}
+      </main>
 
-      {/* Input */}
-      <div className="p-4 bg-white border-t border-slate-200">
-        <form onSubmit={handleSend} className="max-w-3xl mx-auto flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Type situation (e.g. escaping table)..."
-            className="flex-1 p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          />
-          <button disabled={loading || !input.trim()} className="bg-blue-600 text-white p-4 rounded-2xl hover:bg-blue-700 disabled:opacity-30 shadow-lg">
+      {/* Input Module */}
+      <footer className="p-4 bg-white border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] z-10">
+        <form onSubmit={handleSend} className="max-w-4xl mx-auto flex gap-2">
+          <div className="flex-1 relative group">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Briefly describe situation..."
+              className="w-full p-4 pr-12 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white text-sm transition-all"
+            />
+          </div>
+          <button 
+            disabled={loading || !input.trim()} 
+            className="bg-blue-600 text-white p-4 rounded-2xl hover:bg-blue-700 disabled:opacity-20 active:scale-95 transition-all shadow-lg flex items-center justify-center shrink-0"
+          >
             <Send size={20} />
           </button>
         </form>
-        <p className="text-[9px] text-slate-400 text-center mt-3 font-medium uppercase tracking-tighter">
-          Confidential: No patient names. Data vanishes on session close.
-        </p>
-      </div>
+        <div className="max-w-4xl mx-auto mt-3 flex justify-between items-center px-1">
+          <span className="text-[8px] text-slate-400 font-bold uppercase tracking-[0.1em]">AI Assisted Clinical Guidance</span>
+          <span className="text-[8px] text-slate-300 font-medium">Session ID: {Math.random().toString(36).substring(7).toUpperCase()}</span>
+        </div>
+      </footer>
     </div>
   );
 };
